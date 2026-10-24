@@ -1,0 +1,30 @@
+name: Counter example
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Initialize C++ dependencies
+        run: git -C framework/open-vinc submodule update --init -- library/tcl/upstream library/fmt/upstream library/spdlog/upstream library/tomlplusplus/upstream
+      - name: Configure, build and test in the MSVC environment
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSROOT=%%i"
+          call "%VSROOT%\VC\Auxiliary\Build\vcvars64.bat"
+          if errorlevel 1 exit /b 1
+          chcp 65001 >nul
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
+          if errorlevel 1 exit /b 1
+          cmake --build build --parallel 4
+          if errorlevel 1 exit /b 1
+          ctest --test-dir build --output-on-failure
