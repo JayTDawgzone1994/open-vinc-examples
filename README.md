@@ -169,3 +169,13 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 - 入門 Subscriber 只傳 topic 與轉交 `on_message()` 的 lambda，移除選項區塊與容量常數。
 - Windows x64／MSVC 19.51 的 Debug／Release 增量建置成功，計數範例 Runtime 測試各 2/2 通過。
 - 採用預設接收起點，不另設接收大小上限；本輪未驗證其他平台或遠端 CI。
+
+## 入門 CMake 精簡（2026-10-26）
+
+- 兩個入口移除重複的 C++23／MSVC Runtime 設定，以及與框架預設相同的 Apps／Python 開關。
+  保留應用名稱、功能裁剪、UTF-8、Module／訊息組裝與穩定輸出路徑。
+- 自動化測試各自移到 `tests/CMakeLists.txt`，由主檔最後一行 include；既有測試開關與預設值不變。
+  獨立 lifecycle 測試 target 明確要求 C++23、關閉 extensions 並維持相容 CRT。
+- Windows Debug／Release 的兩個入口重新配置、建置與測試通過：計數各 2/2、單一 Module 各 1/1。
+- 另從兩個全新目錄配置，確認 Apps 預設 ON、Python 預設 OFF，且測試可正確註冊；未從這兩個探測目錄完整重建。
+- 未修改固定框架或相依。Linux／macOS 與遠端 CI 未在本輪驗證。
