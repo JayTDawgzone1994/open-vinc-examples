@@ -59,7 +59,11 @@ public:
                 }
             }
 
-            if (text_[{pid, vinc::output_hub::Stream::Stdout}].find(marker) != std::string::npos) {
+            auto& pending = text_[{pid, vinc::output_hub::Stream::Stdout}];
+            const auto position = pending.find(marker);
+            if (position != std::string::npos) {
+                // Consume matches so repeated status checks require fresh output.
+                pending.erase(0, position + marker.size());
                 return true;
             }
 
@@ -159,11 +163,27 @@ bool run(const std::filesystem::path& host, const std::filesystem::path& publish
         return false;
     }
 
+    if (!command(*manager, "receiver", {"receiver", "invalid"}, 1) ||
+        !command(*manager, "receiver", {"receiver", "status", "extra"}, 1) ||
+        !command(*manager, "receiver", {"receiver", "reset", "extra"}, 1) ||
+        !command(*manager, "receiver", {"receiver", "status"}, 0) ||
+        !output.wait_for(*captured, receiver->pid, "received=2") ||
+        !command(*manager, "receiver", {"reset"}, 0) ||
+        !output.wait_for(*captured, receiver->pid, "counter reset") ||
+        !command(*manager, "receiver", {"receiver", "status"}, 0) ||
+        !output.wait_for(*captured, receiver->pid, "received=0") ||
+        !command(*manager, "sender", {"sender", "send"}, 0) ||
+        !output.wait_for(*captured, receiver->pid, "received sequence=3 publisher=sender") ||
+        !command(*manager, "receiver", {}, 0) ||
+        !output.wait_for(*captured, receiver->pid, "received=1")) {
+        return false;
+    }
+
     if (!checked(manager->wait_running(*sender_mid, Clock::now() + operation_timeout))) {
         return false;
     }
 
-    std::cout << "PASS payload, publisher metadata and recoverable command failure\n";
+    std::cout << "PASS payload, status/reset commands and recoverable command failure\n";
     return shutdown(*manager);
 }
 }

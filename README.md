@@ -9,6 +9,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | --- | --- | --- |
 | 第一個運行模組 | `first-module/CMakeLists.txt` | 一個 Plugin 的註冊、啟動與正常停止 |
 | 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
+| 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
@@ -100,6 +101,11 @@ exit
 預期依序看見 `received sequence=1 publisher=sender`、`received sequence=2 publisher=sender`、
 `received=2`。`exit` 正常停止兩個 Module 並等待程序退出。
 
+接續的模組指令教學沿用同一個 Receiver。`receiver reset` 印出 `counter reset` 並清除接收數量，
+再用 `receiver status` 可看到 `received=0`；它不重設 Sender 的訊息序號。
+未知指令或多餘參數會印出 `Usage: receiver [status|reset]` 並回傳 1，Module 保持運行；
+正常指令回傳 0，單獨輸入 `receiver` 仍等同 `receiver status`。
+
 ## 閱讀順序與契約
 
 1. `messages/CounterSample.msg`：只定義 sequence，時間與發布者由框架填入。
@@ -120,9 +126,10 @@ Receiver callback 取得已複製且驗證的本地訊息，應用程式不持�
 ## 測試與驗證
 
 - `counter.lifecycle`：透過公開 Manager／OutputHub，實際啟動兩個 ModuleHost，核對不同 PID、
-  訊息 1／2 與 publisher metadata、錯誤命令不終止 Module、OS 確認正常退出及輸出回收；
+  訊息 1／2／3 與 publisher metadata、status／reset、錯誤命令與額外參數不改變計數、
+  reset 後繼續接收、OS 確認正常退出及輸出回收；
   完整流程執行兩輪。依實際 callback 輸出等待，有明確期限，不用固定 sleep 猜資料送達。
-- `counter.shell`：實際執行 Vinc、範例啟動腳本、發送命令、錯誤命令與 exit，檢查正常退出。
+- `counter.shell`：實際執行 Vinc、範例啟動腳本、發送命令、reset、錯誤命令與 exit，檢查正常退出。
   訊息內容與程序回收由 lifecycle 測試精確驗證，不以停止訊息取代 OS 退出證據。
 
 ## 待處理事項
@@ -179,3 +186,14 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 - Windows Debug／Release 的兩個入口重新配置、建置與測試通過：計數各 2/2、單一 Module 各 1/1。
 - 另從兩個全新目錄配置，確認 Apps 預設 ON、Python 預設 OFF，且測試可正確註冊；未從這兩個探測目錄完整重建。
 - 未修改固定框架或相依。Linux／macOS 與遠端 CI 未在本輪驗證。
+
+## Module 指令教學（2026-10-26）
+
+- Receiver 新增 `reset`，保留 `status` 與無子指令時查詢的既有行為。重置只改動接收計數，
+  不重建訂閱、不重設 Publisher 的 sequence；所有操作仍由 FrameworkLoop 派送。
+- Runtime 測試消耗已匹配的輸出片段，讓重複的 `received=2`／`received=0` 驗證必須等待新輸出。
+  依實際收訊等待後，驗證無效命令／多餘參數不改動計數、reset 到 0、再收 sequence 3 後計數為 1。
+- Windows x64／MSVC 19.51 的 Debug／Release 建置成功，計數範例各 2/2 測試通過。
+- Debug 另按教學手動操作預設 Shell port：status 1 → reset → status 0 → unknown 回傳 1，
+  再查詢仍為 0，發送下一筆 sequence 2 後計數為 1，最後確認兩個程序正常退出。
+- Linux／macOS、遠端 CI 與其他故障情境未在本輪驗證。

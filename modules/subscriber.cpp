@@ -35,13 +35,23 @@ public:
             args.erase(args.begin());
         }
 
-        if (!args.empty() && (args.size() != 1 || args.front() != "status")) {
-            std::cout << "Usage: receiver [status]" << std::endl;
-            return 1;
+        if (args.empty()) {
+            args.push_back("status");
         }
 
-        std::cout << "received=" << received_ << std::endl;
-        return 0;
+        if (args.size() == 1 && args.front() == "status") {
+            std::cout << "received=" << received_ << std::endl;
+            return 0;
+        }
+
+        if (args.size() == 1 && args.front() == "reset") {
+            received_ = 0;
+            std::cout << "counter reset" << std::endl;
+            return 0;
+        }
+
+        std::cout << "Usage: receiver [status|reset]" << std::endl;
+        return 1;
     }
 
     vinc::Result<void> on_stop() override {

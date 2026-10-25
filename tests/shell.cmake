@@ -4,6 +4,9 @@ file(TO_CMAKE_PATH "${STARTUP_SCRIPT}" startup)
 file(WRITE "${TEST_DIRECTORY}/smoke.tcl"
     "set failure [catch {\nsource {${startup}}\nsender send\nreceiver status\n"
     "if {![catch {sender invalid}]} {error {invalid command unexpectedly succeeded}}\n"
+    "receiver reset\nreceiver status\n"
+    "if {![catch {receiver invalid}]} {error {invalid receiver command unexpectedly succeeded}}\n"
+    "if {![catch {receiver reset extra}]} {error {extra reset argument unexpectedly succeeded}}\n"
     "} detail]\nputs \"COUNTER_RESULT=$failure $detail\"\nexit\n")
 execute_process(
     COMMAND "${APP}" --shell-port 0 -S "${TEST_DIRECTORY}/smoke.tcl"
@@ -15,7 +18,7 @@ file(WRITE "${TEST_DIRECTORY}/output.log" "${output}\n${errors}")
 if(NOT result STREQUAL "0")
     message(FATAL_ERROR "Vinc failed (${result}): ${output} ${errors}")
 endif()
-foreach(marker IN ITEMS "ready sender" "ready receiver" "COUNTER_RESULT=0" "stopped sender" "stopped receiver")
+foreach(marker IN ITEMS "ready sender" "ready receiver" "counter reset" "COUNTER_RESULT=0" "stopped sender" "stopped receiver")
     if(NOT "${output}${errors}" MATCHES "${marker}")
         message(FATAL_ERROR "Missing ${marker}: ${output} ${errors}")
     endif()
