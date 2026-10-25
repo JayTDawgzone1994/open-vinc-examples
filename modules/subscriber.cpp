@@ -23,13 +23,7 @@ public:
         auto subscriber = context.subscribe<vinc::CounterSample>(
             "tutorial/counter",
             [this](std::unique_ptr<vinc::CounterSample> message) {
-                ++received_;
-
-                // Flush this small interactive example so captured output is visible promptly.
-                std::cout
-                    << "received sequence=" << message->data().sequence.get()
-                    << " publisher=" << message->publisher_name()
-                    << std::endl;
+                on_message(std::move(message));
             },
             {
                 .start = vinc::message_bus::StartPosition::OldestRetained,
@@ -65,6 +59,16 @@ public:
     }
 
 private:
+    void on_message(std::unique_ptr<vinc::CounterSample> message) {
+        ++received_;
+
+        // Flush this small interactive example so captured output is visible promptly.
+        std::cout
+            << "received sequence=" << message->data().sequence.get()
+            << " publisher=" << message->publisher_name()
+            << std::endl;
+    }
+
     std::optional<vinc::message_bus::Subscriber<vinc::CounterSample>> subscriber_;
     std::uint64_t received_ = 0;
 };

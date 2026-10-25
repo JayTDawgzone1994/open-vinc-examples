@@ -104,7 +104,7 @@ exit
 
 1. `messages/CounterSample.msg`：只定義 sequence，時間與發布者由框架填入。
 2. `modules/publisher.cpp`：advertise、本地 make_message、push 與可恢復的 Shell 命令失敗。
-3. `modules/subscriber.cpp`：保存 handle、接收本地 unique_ptr、on_stop 釋放訂閱。
+3. `modules/subscriber.cpp`：保存 handle，lambda 只轉交本地 unique_ptr 給 `on_message`，由具名成員函式計數與輸出；on_stop 釋放訂閱。
 4. `scripts/startup.tcl`：先啟動 Receiver，再啟動 Publisher，返回後框架繼續運作。
 5. `CMakeLists.txt`：add_message_dir、add_module 與外部框架組裝。
 
@@ -148,3 +148,10 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 - 每組態的 lifecycle 測試完整建立／收發／停止兩輪；Shell 測試另外執行真正的 Vinc 與 Tcl。
 - 測試紀錄位於本機 build/debug/Testing/Temporary/LastTest.log 與對應 Release 目錄；不提交生成檔。
 - 未執行 Linux/macOS 實機驗證。GitHub Actions 已提供 Windows Debug/Release 工作流程，遠端執行結果仍須以 Actions 為準。
+
+## 接收函式可讀性調整（2026-10-26）
+
+- Subscriber 的 lambda 只呼叫 `on_message(std::move(message))`，計數與輸出移到具名成員函式。
+  保留原有訊息所有權、callback 執行緒與輸出內容，不增加執行緒。
+- Windows x64／MSVC 19.51 的 Debug／Release 增量建置成功，`counter.lifecycle`、`counter.shell` 各 **2/2** 通過。
+- 本輪未驗證 Linux／macOS 或遠端 CI；不修改固定框架與上游相依。
