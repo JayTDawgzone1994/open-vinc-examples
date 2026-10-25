@@ -9,10 +9,6 @@
 #include <utility>
 #include <vector>
 
-namespace {
-constexpr std::uint64_t message_limit_bytes = 4096;
-}
-
 class CounterSubscriber final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
@@ -24,10 +20,6 @@ public:
             "tutorial/counter",
             [this](std::unique_ptr<vinc::CounterSample> message) {
                 on_message(std::move(message));
-            },
-            {
-                .start = vinc::message_bus::StartPosition::OldestRetained,
-                .max_message_bytes = message_limit_bytes,
             });
         if (!subscriber) {
             return std::unexpected(subscriber.error());
