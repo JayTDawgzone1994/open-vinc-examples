@@ -8,11 +8,6 @@
 #include <utility>
 #include <vector>
 
-namespace {
-constexpr std::uint32_t ring_slots = 4;
-constexpr std::uint64_t message_limit_bytes = 4096;
-}
-
 class CounterPublisher final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
@@ -21,11 +16,7 @@ public:
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
         auto publisher = context.advertise<vinc::CounterSample>(
-            "tutorial/counter",
-            {
-                .slots = ring_slots,
-                .max_message_bytes = message_limit_bytes,
-            });
+            "tutorial/counter");
         if (!publisher) {
             return std::unexpected(publisher.error());
         }

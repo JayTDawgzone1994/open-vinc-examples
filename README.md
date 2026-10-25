@@ -111,7 +111,8 @@ exit
 ModuleType 為 `counterPublisher`／`counterSubscriber`，固定實例名稱為 `sender`／`receiver`；
 第一篇不提供 --name，重複啟動同名實例會被拒絕。兩個 Module 都使用 FrameworkLoop，
 callback 與 Shell hook 由同一個 pump 執行緒派送，不增加使用者執行緒。
-Publisher 保留 4 筆、每筆 4096 bytes。讀者過慢時仍可能被覆蓋，這不是每筆必達保證。
+Publisher 省略容量選項，使用 v0.1.2 預設的 2 個 slot、每筆完整訊息映像上限 1 MiB；Subscriber 仍保留接收端的 4096-byte 上限。
+讀者過慢時仍可能被覆蓋，這不是每筆必達保證。
 OldestRetained 允許讀取 Publisher 加入時仍保留的資料；不能補回已覆蓋內容。
 Receiver callback 取得已複製且驗證的本地訊息，應用程式不持有共享讀取保護。
 
@@ -155,3 +156,9 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
   保留原有訊息所有權、callback 執行緒與輸出內容，不增加執行緒。
 - Windows x64／MSVC 19.51 的 Debug／Release 增量建置成功，`counter.lifecycle`、`counter.shell` 各 **2/2** 通過。
 - 本輪未驗證 Linux／macOS 或遠端 CI；不修改固定框架與上游相依。
+
+## Publisher 預設容量（2026-10-26）
+
+- 入門 Publisher 省略 `PublisherOptions` 與容量常數，使用 v0.1.2 預設的 2 個 slot、每筆 1 MiB。
+- Windows x64／MSVC 19.51 的 Debug／Release 增量建置成功，計數範例 Runtime 測試各 2/2 通過。
+- 保留逐筆等待接收輸出的教學操作；不把有限緩衝區視為每筆必達保證。本輪未驗證其他平台或遠端 CI。
