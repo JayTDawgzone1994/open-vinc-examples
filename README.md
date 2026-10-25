@@ -1,7 +1,16 @@
 # Open-VINC Examples
 
-第一個獨立 C++ 範例：兩個 Module 傳遞計數訊息。框架固定為 **v0.1.2**，
+獨立 C++ 入門範例：先運行一個 Module，再讓兩個 Module 傳遞計數訊息。框架固定為 **v0.1.2**，
 commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK 與 CMake functions。
+
+## 教學順序
+
+| 範例 | 建置入口 | 學習目標 |
+| --- | --- | --- |
+| 第一個運行模組 | `first-module/CMakeLists.txt` | 一個 Plugin 的註冊、啟動與正常停止 |
+| 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
+
+兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
 ## 取得相依
 
@@ -17,7 +26,45 @@ Windows 使用 MSVC 開發者環境，Tcl 需要 NMAKE。此範例停用 Runtime
 所以不需要 Node.js、npm 或 Python 來建置／執行／測試。
 Linux/macOS 的相依與平台限制以框架 README 為準，這份範例的實機結果見下方。
 
-## 建置與測試
+## 第一個運行模組
+
+從 repository 根目錄執行：
+
+```sh
+cmake -S first-module -B build/first-module-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/first-module-debug --parallel 4
+ctest --test-dir build/first-module-debug --output-on-failure
+```
+
+Release 改用 `build/first-module-release` 與 `-DCMAKE_BUILD_TYPE=Release`。
+此入口新增 `helloModule`，不加入計數 Module 或應用訊息；中央仍登記框架內建的 `bagRecorder` 種類，但不自動啟動它。`hello.cpp` 使用 FrameworkLoop，
+`on_start`／`on_stop` 印出 `hello started`／`hello stopped`；必要的 `module_interface` 回傳 1，尚不提供應用命令。
+沒有額外應用資源或使用者執行緒；正常停止由框架結束 pump 並執行清理 hook。
+`FIRST_MODULE_BUILD_TESTS` 控制這個入口的測試，與計數入口的 `COUNTER_BUILD_TESTS` 分開。
+
+從根目錄執行以下 PowerShell 命令，再在 Vinc Shell 輸入 `helloModule`。
+等待 `hello started` 與 `Started hello`，以 `help` 查看實例狀態，最後用 `exit` 關閉。
+
+```powershell
+.\build\first-module-debug\Vinc.exe --shell-port 0
+```
+
+關閉前一次中央後，也可使用附帶的啟動腳本；腳本返回後仍在 Shell 輸入 `exit`：
+
+```powershell
+.\build\first-module-debug\Vinc.exe --shell-port 0 -S first-module/scripts/startup.tcl
+```
+
+`HelloModule` 是 C++ 類別，`hello_module` 是 CMake target，`helloModule` 是 ModuleType，
+`hello` 是固定實例名稱。重複啟動同名實例會被拒絕，第一篇不提供 `--name`。
+中央身分為 `first-module-example`，與計數入口分開；仍需維持 Host／Plugin 工具鏈、組態與 CRT 相容。
+此入口也是 build-tree 專案，不是可任意搬動的安裝包。
+
+`hello.shell` 實際執行中央與同一份啟動腳本，在 20 秒期限內驗證啟停輸出順序與中央正常退出。
+測試透過 Tcl 同步建立 Module，不使用固定 sleep。它不涵蓋 Ctrl+C、強制崩潰或跨平台行為。
+Windows CI 的 Debug／Release matrix 已包含兩個入口；遠端結果以 Actions 為準。
+
+## 計數範例：建置與測試
 
 ```sh
 cmake -S . -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
@@ -80,6 +127,18 @@ Receiver callback 取得已複製且驗證的本地訊息，應用程式不持�
 
 - 完整三平台驗證、Python 對照範例、指定實例名稱、安裝／可重定位封裝留待後續。
 - Ctrl+C 的行為沿用框架；本範例新增的測試驗證 exit／Manager 正常停止，不宣稱新增訊號測試。
+
+## 單一 Module 實機紀錄（2026-10-25）
+
+Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
+
+- `first-module/` 從獨立目錄完成 Debug／Release 建置，`hello.shell` 各 **1/1** 通過。
+- 測試實際載入 Hello Plugin，核對啟動、停止順序與中央退出碼 0；輸出記錄於
+  `build/first-module-debug/hello-test/output.log` 與對應 Release 目錄。
+- Debug 另依教學手動操作本機 Shell：`helloModule` → `help` → `exit`，確認
+  `Started hello`、`hello Running MID=1 PID=...`、`hello stopped` 及全部 Module 程序退出訊息。
+- 首次受限環境的 MSVC 編譯器探測曾失敗（C1902）；同一工具鏈在可使用 PDB 服務的環境重新配置與建置成功，沒有修改框架或上游相依。
+- 未執行 Linux／macOS、Ctrl+C 或強制崩潰測試；新增 CI matrix 尚未在遠端執行。
 
 ## 實機紀錄（2026-10-25）
 
