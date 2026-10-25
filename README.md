@@ -1,6 +1,6 @@
 # Open-VINC Examples
 
-獨立 C++ 入門範例：先運行一個 Module，再讓兩個 Module 傳遞計數訊息。框架固定為 **v0.1.2**，
+獨立 C++／Python 入門範例：先運行一個 Module，再讓兩個 Module 傳遞計數訊息。框架固定為 **v0.1.2**，
 commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK 與 CMake functions。
 
 ## 教學順序
@@ -24,7 +24,7 @@ git -C framework/open-vinc submodule update --init -- library/tcl/upstream libra
 
 需要 CMake 3.20 以上、Ninja，以及支援本框架所用 C++23 功能的工具鏈。
 Windows 使用 MSVC 開發者環境，Tcl 需要 NMAKE。此範例停用 Runtime Web UI 與 Python SDK，
-所以不需要 Node.js、npm 或 Python 來建置／執行／測試。
+所以 C++ 入口不需要 Node.js、npm 或 Python 來建置／執行／測試。
 Linux/macOS 的相依與平台限制以框架 README 為準，這份範例的實機結果見下方。
 
 ## 第一個運行模組
@@ -134,7 +134,7 @@ Receiver callback 取得已複製且驗證的本地訊息，應用程式不持�
 
 ## 待處理事項
 
-- 完整三平台驗證、Python 對照範例、指定實例名稱、安裝／可重定位封裝留待後續。
+- 完整三平台驗證、Python 遠端 CI、指定實例名稱、安裝／可重定位封裝留待後續。
 - Ctrl+C 的行為沿用框架；本範例新增的測試驗證 exit／Manager 正常停止，不宣稱新增訊號測試。
 
 ## 單一 Module 實機紀錄（2026-10-25）
@@ -197,3 +197,41 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 - Debug 另按教學手動操作預設 Shell port：status 1 → reset → status 0 → unknown 回傳 1，
   再查詢仍為 0，發送下一筆 sequence 2 後計數為 1，最後確認兩個程序正常退出。
 - Linux／macOS、遠端 CI 與其他故障情境未在本輪驗證。
+
+## Python 入門範例（2026-10-26）
+
+`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber 三個 Python Module，
+共用根目錄的 CounterSample.msg。ModuleType 與實例名稱對應 C++ 教學，讓 Shell 操作保持相同。
+不加入同名的 C++ Plugin，以免掃描時衝突。
+
+在已載入 MSVC x64 環境的 PowerShell，從 repository 根目錄執行：
+
+```powershell
+git -C framework/open-vinc submodule update --init -- library/pybind11/upstream
+py -3.13 -m venv .venv
+cmake -S python -B build/python -G Ninja -DCMAKE_BUILD_TYPE=Release "-DPython_EXECUTABLE=$PWD/.venv/Scripts/python.exe"
+cmake --build build/python
+.\build\python\Vinc.exe --python .\.venv\Scripts\python.exe
+```
+
+需要 64 位元、有 GIL 的 CPython，與原生 SDK 使用的工具鏈／Runtime 相容；Windows 不使用 MinGW Python。
+這不是 pip 套件：SDK 隨 Vinc 部署到建置目錄的 python/vinc。新增訊息定義須重新建置 SDK。
+修改 python/modules 的 .py 後，建置會複製到 data/module；重新啟動 Vinc 後使用更新內容。
+on_start 保存 Publisher／Subscriber，on_stop 明確 close；FrameworkLoop 派送訊息與指令。
+Python module_interface 的 args 已移除實例名稱；推送失敗捕捉 VincError 並回傳 1，避免預期的指令失敗使 Module fault。
+
+驗證命令（教學主文不要求讀者執行測試）：
+
+```sh
+ctest --test-dir build/python --output-on-failure
+```
+
+- Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、CPython 3.13.12：Debug／Release 建置成功，
+  python.tutorials 各 1/1 通過。測試實際啟動中央與 Python 子程序，逐筆等待輸出，驗證 Hello 啟停、
+  sequence 1／2／3、不同 PID、status、reset、錯誤命令／多餘參數不改變計數及正常 exit。
+  等待有期限，失敗時只清理本次建立的程序樹。紀錄在各建置目錄 python-test.log。
+- 本機原始 Python 的 VCRUNTIME140 14.42.34438 被 SDK 的 14.51.36244 最低基準拒絕。
+  成功路徑使用既有隔離 CPython 副本（open-vinc/build/runtime-investigation/python），搭配 VS 提供的
+  14.51.36247 Runtime；也以該副本建立的 .venv 跑通相同流程。未修改系統 Python 或固定框架。
+  若遇 incompatible MSVC Runtime，依錯誤的實際 DLL 路徑修正部署；只更新系統 DLL 不一定能修正 Python 自帶舊副本。
+- Python CI 尚未配置相容環境，Linux／macOS 未驗證。現有 C++ CI 工作流程維持原範圍。
