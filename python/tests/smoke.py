@@ -160,14 +160,47 @@ def parameters(shell):
     assert "stopped receiver" in shell.transcript, shell.transcript
 
 
+def rpc(shell):
+    shell.wait_for("VINC ready")
+    shell.command("rpcPublisher", "Started sender")
+    shell.command("help", "sender Running")
+    # A missing target is a recoverable RPC failure, not a sender crash.
+    shell.command("sender count", "RPC failed:")
+    shell.command("rpcSubscriber", "Started receiver")
+    shell.command("sender count", "RPC received=0")
+    shell.command("sender count extra", "sender returned 1")
+    shell.command("sender invalid", "sender returned 1")
+    shell.command("sender send", "received sequence=1 publisher=sender")
+    shell.command("sender count", "RPC received=1")
+    shell.command("sender send", "received sequence=2 publisher=sender")
+    shell.command("sender count", "RPC received=2")
+    shell.command("sender count", "RPC received=2")
+    shell.command("receiver reset", "counter reset")
+    shell.command("sender count", "RPC received=0")
+    shell.command("sender send", "received sequence=3 publisher=sender")
+    shell.command("sender count", "RPC received=1")
+    shell.command("help", "sender Running")
+    shell.wait_for("receiver Running")
+
+    sender_pids = re.findall(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
+    receiver_pid = re.search(r"receiver Running MID=\d+ PID=(\d+)", shell.transcript)
+    assert len(sender_pids) == 2 and sender_pids[0] == sender_pids[1], shell.transcript
+    assert receiver_pid and receiver_pid[1] != sender_pids[-1], shell.transcript
+    shell.finish()
+    assert "stopped sender" in shell.transcript, shell.transcript
+    assert "stopped receiver" in shell.transcript, shell.transcript
+
+
 def main():
     app = Path(sys.argv[1]).resolve()
     interpreter = None if sys.argv[2] == "-" else Path(sys.argv[2]).resolve()
     log = Path(sys.argv[3])
     transcripts = []
     try:
-        scenarios = (parameters,) if sys.argv[4:] == ["parameters"] else (hello, counter, parameters)
-        for scenario in scenarios:
+        scenarios = {"hello": hello, "counter": counter, "parameters": parameters, "rpc": rpc}
+        selected = sys.argv[4:] or list(scenarios)
+        for name in selected:
+            scenario = scenarios[name]
             shell = Shell(app, interpreter)
             try:
                 scenario(shell)

@@ -11,6 +11,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
 | 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
 | 不用重啟，修改模組參數 | 同一個根目錄入口，新增 `parameters/` | 用 `sender.step` 調整步進 |
+| 第一個 RPC | 同一個根目錄入口，新增 `rpc/` | `sender count` 請求 receiver 的接收數量 |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
@@ -201,7 +202,7 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 
 ## Python 入門範例（2026-10-26）
 
-`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber、parameterPublisher 四個 Python Module，
+`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber、parameterPublisher、rpcPublisher、rpcSubscriber 六個 Python Module，
 共用根目錄的 CounterSample.msg。ModuleType 與實例名稱對應 C++ 教學，讓 Shell 操作保持相同。
 不加入同名的 C++ Plugin，以免掃描時衝突。
 
@@ -274,3 +275,33 @@ exit
   避免相同 VINC_NAME 的中央同時啟動；不修改框架的單實例防護。
 - C++ Windows CI 增加參數 Shell 流程，測試驅動器使用 setup-python 3.13；遠端尚未執行。
   Python SDK 的遠端 CI、Linux／macOS 與參數保存／重啟流程仍待驗證。本篇不呼叫 param save。
+
+## 第一個 RPC（2026-10-26）
+
+新增 `rpcPublisher`／`rpcSubscriber`，實例分別為 sender／receiver。C++ 位於 rpc/，由根目錄建置；
+Python 位於 python/modules 的同名目錄。原有 counterPublisher、counterSubscriber 與 parameterPublisher
+維持原樣。兩個 RPC Module 都使用 FrameworkLoop，Bus callback、RPC handler 與 completion 由框架派送，
+沒有額外使用者執行緒或同步等待回覆的迴圈。
+
+新增 messages/GetCountRequest.msg（無資料欄位）與 GetCountResponse.msg（uint64 received），
+沿用原有 add_message_dir。Python 必須重新建置 SDK，才能使用新生成型別。
+接收端在 on_start 登記 get_count 服務，由具名函式填入目前計數並回傳 RpcStatus.success()。
+發送端的 sender count 非同步呼叫 receiver/get_count；本地接受不等於遠端成功，完成時才印出 RPC received=N。
+登記失敗視為啟動失敗；本地呼叫失敗、completion 框架錯誤與應用非零狀態均有檢查，預期呼叫失敗不使 sender fault。
+服務隨 Module 停止，不提供顯式取消註冊；on_stop 關閉 Publisher／Subscriber。
+
+教學操作：先 rpcSubscriber，等 Started receiver，再 rpcPublisher，等 Started sender。
+sender count 得到 RPC received=0；sender send 後等待實際接收 sequence=1，再 count 得到 1；
+第二筆等待 sequence=2 再 count 得到 2。最後 exit。先等待 Bus 接收輸出，避免把尚未處理的訊息算入預期。
+
+Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、相容 CPython 3.13.12 實測：
+
+- C++ Debug／Release 建置成功，既有 CTest 各 2/2 通過；標準函式庫 Shell 驅動器各通過 parameters、rpc 情境：
+  `.venv/Scripts/python.exe python/tests/smoke.py build/debug/Vinc.exe - build/debug/native-tutorials.log parameters rpc`，
+  Release 改 build/release。驅動器不引入 C++ 建置或執行時的 Python SDK 相依。
+- Python Debug／Release 建置成功，python.tutorials 各 1/1 通過，包含 hello、counter、parameters、rpc 四個情境。
+- RPC 核對 0／1／2、重複查詢不改值、reset 後 0、下一筆後 1；目標尚未啟動時回報 NotFound，
+  啟動目標後可再呼叫成功。額外參數／未知指令回傳 1；sender PID 在失敗與成功後保持相同，receiver 為不同 PID。
+  各次查詢等候新完成輸出，所有等待有期限；最後檢查停止輸出與中央退出碼 0。
+- C++ CI 的 Shell 步驟加入 RPC，遠端尚未執行。Python SDK 遠端 CI、Linux／macOS 和 C++↔Python 混合配對
+  未在本輪驗證；本輪不修改框架、協定、工具鏈或系統 Python。

@@ -33,6 +33,6 @@ jobs:
           cmake --build build --parallel 4
           if errorlevel 1 exit /b 1
           ctest --test-dir build --output-on-failure
-      - name: Exercise live parameters through the real native Shell
+      - name: Exercise parameters and RPC through the real native Shell
         if: matrix.example == '.'
-        run: python python/tests/smoke.py build/Vinc.exe - build/parameters-test.log parameters
+        run: python python/tests/smoke.py build/Vinc.exe - build/native-tutorials.log parameters rpc
