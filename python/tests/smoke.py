@@ -254,6 +254,104 @@ def startup_scripts(shell):
         shell.transcript += "\nINTERACTIVE SRUN\n" + interactive.transcript
 
 
+def structured_lines(text, level=None, message=None):
+    return [
+        line for line in text.splitlines()
+        if "origin=structured" in line
+        and (level is None or f"level={level}" in line)
+        and (message is None or message in line)
+    ]
+
+
+def trace_until(shell, enabled):
+    deadline = time.monotonic() + COMMAND_TIMEOUT
+    while time.monotonic() < deadline:
+        shell.command("sender trace", "trace debug_enabled=")
+        states = re.findall(r"trace debug_enabled=([01])", shell.transcript)
+        if states[-1] == str(enabled):
+            return
+    raise AssertionError("Log source level did not reach sender\n" + shell.transcript)
+
+
+def logging(shell):
+    shell.wait_for("VINC ready")
+    shell.command("log show on", "Log display on")
+    shell.command("log show info", "Log display level updated")
+    shell.command("logSubscriber", "Started receiver")
+    shell.command("logPublisher", "Started sender")
+    shell.command("sender count", "RPC count=0")
+    assert structured_lines(shell.transcript, "INFO", "sender started"), shell.transcript
+    if not structured_lines(shell.transcript, "INFO", "receiver started"):
+        shell.wait_for("receiver started")
+
+    begin = len(shell.transcript)
+    shell.command("sender trace", "trace debug_enabled=0")
+    shell.command("sender count", "RPC count=0")
+    assert not structured_lines(shell.transcript[begin:], "DEBUG"), shell.transcript
+
+    # Showing Debug alone cannot recover messages filtered at the Module source.
+    shell.command("log show debug", "Log display level updated")
+    begin = len(shell.transcript)
+    shell.command("sender trace", "trace debug_enabled=0")
+    shell.command("sender count", "RPC count=0")
+    assert not structured_lines(shell.transcript[begin:], "DEBUG"), shell.transcript
+
+    shell.command("log level sender debug", "Log source level update queued")
+    begin = len(shell.transcript)
+    trace_until(shell, 1)
+    if not structured_lines(shell.transcript[begin:], "DEBUG", "trace detail"):
+        shell.wait_for("trace detail")
+    shell.command("sender send", "received sequence=1 publisher=sender")
+    shell.command("sender count", "RPC count=1")
+
+    # A later Info record from the same source fences earlier hidden Debug records.
+    shell.command("log show info", "Log display level updated")
+    begin = len(shell.transcript)
+    shell.command("sender trace", "trace debug_enabled=1")
+    shell.command("sender count", "RPC count=1")
+    assert not structured_lines(shell.transcript[begin:], "DEBUG"), shell.transcript
+
+    shell.command("log show warn", "Log display level updated")
+    begin = len(shell.transcript)
+    shell.command("sender send", "received sequence=2 publisher=sender")
+    shell.command("sender count", "RPC received=2")
+    shell.command("sender invalid", "unknown sender command")
+    assert structured_lines(shell.transcript[begin:], "WARN", "unknown sender command"), shell.transcript
+    assert not structured_lines(shell.transcript[begin:], "INFO"), shell.transcript
+    shell.command("sender count missingReceiver", "RPC request failed:")
+    assert structured_lines(shell.transcript[begin:], "ERROR", "RPC request failed:"), shell.transcript
+
+    shell.command("log level sender warn", "Log source level update queued")
+    trace_until(shell, 0)
+    shell.command("log show debug", "Log display level updated")
+    begin = len(shell.transcript)
+    shell.command("sender count", "RPC received=2")
+    shell.command("sender invalid", "unknown sender command")
+    assert not structured_lines(shell.transcript[begin:], "INFO"), shell.transcript
+    assert not structured_lines(shell.transcript[begin:], "DEBUG"), shell.transcript
+
+    shell.command("log show off", "Log display off")
+    shell.command("log level sender debug", "Log source level update queued")
+    trace_until(shell, 1)
+    begin = len(shell.transcript)
+    shell.command("sender count", "RPC received=2")
+    shell.command("sender send", "received sequence=3 publisher=sender")
+    shell.finish()
+    assert not structured_lines(shell.transcript[begin:]), shell.transcript
+    assert "Log rejected:" not in shell.transcript, shell.transcript
+    assert "stopped sender" in shell.transcript and "stopped receiver" in shell.transcript
+
+    created = set(shell.log_directory.glob("*/vinc-*.log")) - shell.log_files_before
+    assert created, "No new log file"
+    saved = "\n".join(path.read_text(encoding="utf-8") for path in sorted(created))
+    for level, message in [
+        ("INFO", "sender started"), ("INFO", "counter received sequence=3"),
+        ("DEBUG", "trace detail"), ("WARN", "unknown sender command"),
+        ("ERROR", "RPC request failed:"), ("INFO", "sender stopped"),
+    ]:
+        assert structured_lines(saved, level, message), f"Missing saved {level}: {message}\n{saved}"
+
+
 def main():
     app = Path(sys.argv[1]).resolve()
     interpreter = None if sys.argv[2] == "-" else Path(sys.argv[2]).resolve()
@@ -263,25 +361,35 @@ def main():
         scenarios = {
             "hello": hello, "counter": counter, "parameters": parameters,
             "rpc": rpc, "startup": startup_scripts,
+            "logging": logging,
         }
         selected = sys.argv[4:] or list(scenarios)
         for name in selected:
             scenario = scenarios[name]
             saved_file = None
             saved_contents = None
-            if name == "parameters":
+            log_directory = None
+            log_files_before = set()
+            if name in ("parameters", "logging"):
                 cache = (app.parent / "CMakeCache.txt").read_text(encoding="utf-8")
                 identity = re.search(r"^VINC_NAME:STRING=([A-Za-z0-9_-]+)$", cache, re.MULTILINE)
                 if identity is None:
                     raise AssertionError("Cannot locate the example's parameter file")
-                saved_file = app.parent / "vinc_data" / identity[1] / "params.toml"
-                if saved_file.exists():
-                    saved_contents = saved_file.read_bytes()
+                if name == "parameters":
+                    saved_file = app.parent / "vinc_data" / identity[1] / "params.toml"
+                    if saved_file.exists():
+                        saved_contents = saved_file.read_bytes()
+                else:
+                    log_directory = app.parent / "vinc_data" / identity[1] / "logs"
+                    log_files_before = set(log_directory.glob("*/vinc-*.log"))
             shell = Shell(
                 app, interpreter,
                 startup=STARTUP_SCRIPT if name == "startup" else None,
                 working_directory=EXAMPLE_ROOT if name == "startup" else None,
             )
+            if name == "logging":
+                shell.log_directory = log_directory
+                shell.log_files_before = log_files_before
             try:
                 scenario(shell)
                 print(f"PASS {scenario.__name__}")

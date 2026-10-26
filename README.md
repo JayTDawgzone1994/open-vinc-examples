@@ -13,6 +13,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | 設定與儲存模組參數 | 同一個根目錄入口，新增 `parameters/` | 調整 `sender.step`、保存並重新啟動 |
 | 第一個 RPC | 同一個根目錄入口，新增 `rpc/` | `sender count` 請求 receiver 的接收數量 |
 | 使用啟動腳本 | 同一個 RPC 範例 | `-S` 與 `srun` 共用 scripts/rpc-startup.tcl |
+| 讓模組輸出日誌 | 同一個根目錄入口，新增 `logging/` | 四種等級、來源過濾與 Shell 顯示過濾 |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
@@ -203,7 +204,7 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 
 ## Python 入門範例（2026-10-26）
 
-`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber、parameterPublisher、rpcPublisher、rpcSubscriber 六個 Python Module，
+`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber、parameterPublisher、rpcPublisher、rpcSubscriber、logPublisher、logSubscriber 八個 Python Module，
 共用根目錄的 CounterSample.msg。ModuleType 與實例名稱對應 C++ 教學，讓 Shell 操作保持相同。
 不加入同名的 C++ Plugin，以免掃描時衝突。
 
@@ -350,3 +351,34 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、相容 CPython 3.13.12 �
   本輪沿用既有二進位，不重建未修改的 Module／SDK。等待有期限，失敗只清理本次程序樹。
 - native-tutorials.log／python-test.log 記錄 -S、重複執行錯誤與 INTERACTIVE SRUN。
   C++ CI 已納入 startup 情境；遠端 CI、Linux／macOS、內嵌腳本、取消及 Tcl 控制流程未在本輪驗證。
+
+## 模組日誌（2026-10-26）
+
+新增 logging/ 的 logPublisher／logSubscriber 與 python/modules 的同名版本，固定實例仍為 sender／receiver。
+沿用 CounterSample、get_count RPC 與 FrameworkLoop；不更動原有 counter、parameters、rpc 範例或固定框架。
+根目錄 CMake 建置兩個原生 Module；Python 建置照既有方式複製 .py 檔。
+on_start 記錄 Info，接收 callback 記錄 Info，發送準備與 trace 記錄 Debug，未知 sender 命令記錄 Warn，
+RPC 本地拒絕／完成失敗／應用非零狀態記錄 Error。Error 等級本身不使 Module fault。
+
+兩個模組的具名 write_log helper 檢查 C++ Result／捕捉 Python VincError；寫入拒絕改用普通輸出提示，
+不遞迴寫 Log、不把日誌失敗回傳成 hook 失敗。原有 ready／received／RPC／stopped 輸出保留，
+與帶有來源與等級的結構化紀錄區分。成功寫入只代表本地接受，不宣稱必達或斷電保存。
+on_stop 釋放 Publisher／Subscriber 並記錄停止，沒有額外使用者執行緒或檔案 handle。
+
+操作：開啟全新中央後 log show on，依序 logSubscriber、logPublisher，等待各自 Started。
+sender send、sender count 延續先前語意；sender trace 寫入 Debug 並印出 debug_enabled=0／1，
+用來確認非同步的 log level sender debug 已套用。sender count missingReceiver 可示範預期 RPC 失敗，
+之後 sender count 仍能取得真正 receiver 的回覆。log show warn 只顯示 Warn／Error；log show off 只關閉顯示。
+
+Windows x64／MSVC 19.51.36257／CMake 4.3.2／Ninja／相容 CPython 3.13.12 實測：
+
+- C++ Debug／Release 完成增量建置，既有 CTest 各 2/2 通過；真實 Shell 驅動器各通過
+  parameters、rpc、startup、logging 四情境。記錄位於 build/debug/native-tutorials.log 與 Release 對應檔。
+- Python Debug／Release 建置完成，python.tutorials 各 1/1 通過，包含 hello、counter、parameters、rpc、startup、logging 六情境。
+- logging 核對初始 Info、單獨 log show debug 不產生來源已略過的 Debug、來源改 Debug 後的 trace／send，
+  以及 Shell 改 Info／Warn 時隱藏較詳細等級。來源改 Warn 後，即使 Shell 顯示 Debug，來源 Info／Debug 仍略過。
+  來源等級透過 enabled 輸出確認套用，不使用固定 sleep；同來源的後續可見紀錄作為顯示過濾檢查的等待依據。
+- RPC 失敗有 Error，無效命令有 Warn，之後正常查詢仍成功。log show off 後仍可收訊、查詢與正常退出，
+  且新的中央日誌檔包含關閉顯示後的 sequence=3、四個等級與 sender stopped。
+  只讀取本次中央新增的日誌檔，不改寫或刪除既有日誌；所有程序等待有期限並清理本次程序樹。
+- C++ CI 已加入 logging 情境；遠端 CI、Python SDK 遠端 CI、Linux／macOS、過載或磁碟故障未在本輪驗證。

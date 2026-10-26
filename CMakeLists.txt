@@ -31,4 +31,5 @@ set_target_properties(shell PROPERTIES
 
 add_subdirectory(parameters)
 add_subdirectory(rpc)
+add_subdirectory(logging)
 include(tests/CMakeLists.txt)
