@@ -10,7 +10,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | 第一個運行模組 | `first-module/CMakeLists.txt` | 一個 Plugin 的註冊、啟動與正常停止 |
 | 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
 | 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
-| 不用重啟，修改模組參數 | 同一個根目錄入口，新增 `parameters/` | 用 `sender.step` 調整步進 |
+| 設定與儲存模組參數 | 同一個根目錄入口，新增 `parameters/` | 調整 `sender.step`、保存並重新啟動 |
 | 第一個 RPC | 同一個根目錄入口，新增 `rpc/` | `sender count` 請求 receiver 的接收數量 |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
@@ -274,7 +274,7 @@ exit
 - 各建置目錄保留 parameters-test.log 或 python-test.log。不同組態的 Python 測試須依序執行，
   避免相同 VINC_NAME 的中央同時啟動；不修改框架的單實例防護。
 - C++ Windows CI 增加參數 Shell 流程，測試驅動器使用 setup-python 3.13；遠端尚未執行。
-  Python SDK 的遠端 CI、Linux／macOS 與參數保存／重啟流程仍待驗證。本篇不呼叫 param save。
+  Python SDK 的遠端 CI、Linux／macOS 仍待驗證。參數保存與重啟的新增驗證見下方紀錄。
 
 ## 第一個 RPC（2026-10-26）
 
@@ -305,3 +305,20 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、相容 CPython 3.13.12 �
   各次查詢等候新完成輸出，所有等待有期限；最後檢查停止輸出與中央退出碼 0。
 - C++ CI 的 Shell 步驟加入 RPC，遠端尚未執行。Python SDK 遠端 CI、Linux／macOS 和 C++↔Python 混合配對
   未在本輪驗證；本輪不修改框架、協定、工具鏈或系統 Python。
+
+## 參數保存與重啟（2026-10-26）
+
+參數教學在同一篇完成調整、param save、退出中央、重新啟動中央與兩個 Module、讀回設定的流程。
+不另開保存教學，Module 原始碼與 SDK 用法無需更動。
+
+- parameters 情境在測試開始時將 live step 設成 1，讓已存在其他保存值時仍可重跑；不改原始碼預設值。
+  測試結束前設成 5，等 Module 回報 step=5，再執行 param save 並等 Parameters saved。
+- 確認第一個中央正常退出後，建立第二個中央與全新 Module，使用同一建置目錄和 VINC_NAME。
+  等 step=5，再用 param get 核對保存值，逐筆收到 sequence 5／10；接收計數重新從 0 累積至 2。
+- 測試驅動器從 CMakeCache 的 VINC_NAME 定位本次建置的參數檔，保留原始檔案 bytes，
+  等測試程序結束後原樣還原；原先不存在的檔案則只移除測試建立的該檔。無遞迴清理，不覆寫使用者原有設定。
+- Windows x64／MSVC 19.51／CPython 3.13.12：C++ Debug／Release 的真實 Shell 驅動器各通過 parameters、rpc；
+  Python Debug／Release 的 python.tutorials 各 1/1 通過，仍包含四情境，parameters 現在涵蓋兩次中央啟動。
+  本輪只修改測試與文件，沿用已建置的相同執行檔；沒有重新編譯 Module 或 SDK。
+- 各建置目錄的 native-tutorials.log／python-test.log 含 Parameters saved、RESTART AFTER PARAM SAVE、sequence 5／10。
+  本機確認測試後原參數檔的 saved value 維持 1。遠端 CI、Linux／macOS 未驗證。

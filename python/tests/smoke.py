@@ -14,6 +14,8 @@ COMMAND_TIMEOUT = 10
 
 class Shell:
     def __init__(self, app, interpreter):
+        self.app = app
+        self.interpreter = interpreter
         arguments = [str(app), "--shell-port", "0"]
         if interpreter is not None:
             arguments += ["--python", str(interpreter)]
@@ -126,8 +128,9 @@ def parameters(shell):
     shell.wait_for("VINC ready")
     shell.command("counterSubscriber", "Started receiver")
     shell.command("parameterPublisher", "Started sender")
-    if "step=1" not in shell.transcript:
-        shell.wait_for("step=1")
+    shell.command("param set sender.step 1", "Parameter committed (not saved)")
+    if "step=1\n" not in shell.transcript:
+        shell.wait_for("step=1\n")
     shell.command("help", "sender Running")
     initial_sender = re.search(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
     assert initial_sender, shell.transcript
@@ -155,9 +158,30 @@ def parameters(shell):
     shell.command("help", "sender Running")
     sender_pids = re.findall(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
     assert len(sender_pids) == 2 and sender_pids[0] == sender_pids[1], shell.transcript
+    shell.command("param set sender.step 5", "step=5")
+    shell.command("param save", "Parameters saved")
     shell.finish()
     assert "stopped sender" in shell.transcript, shell.transcript
     assert "stopped receiver" in shell.transcript, shell.transcript
+
+    # Restart the real central process and both Modules, using the same saved file.
+    restarted = Shell(shell.app, shell.interpreter)
+    try:
+        restarted.wait_for("VINC ready")
+        restarted.command("counterSubscriber", "Started receiver")
+        restarted.command("parameterPublisher", "Started sender")
+        if "step=5\n" not in restarted.transcript:
+            restarted.wait_for("step=5\n")
+        restarted.command("param get sender.step", "= 5")
+        restarted.command("sender send", "received sequence=5 publisher=sender")
+        restarted.command("sender send", "received sequence=10 publisher=sender")
+        restarted.command("receiver status", "received=2")
+        restarted.finish()
+        assert "stopped sender" in restarted.transcript, restarted.transcript
+        assert "stopped receiver" in restarted.transcript, restarted.transcript
+    finally:
+        restarted.cleanup()
+        shell.transcript += "\nRESTART AFTER PARAM SAVE\n" + restarted.transcript
 
 
 def rpc(shell):
@@ -201,6 +225,16 @@ def main():
         selected = sys.argv[4:] or list(scenarios)
         for name in selected:
             scenario = scenarios[name]
+            saved_file = None
+            saved_contents = None
+            if name == "parameters":
+                cache = (app.parent / "CMakeCache.txt").read_text(encoding="utf-8")
+                identity = re.search(r"^VINC_NAME:STRING=([A-Za-z0-9_-]+)$", cache, re.MULTILINE)
+                if identity is None:
+                    raise AssertionError("Cannot locate the example's parameter file")
+                saved_file = app.parent / "vinc_data" / identity[1] / "params.toml"
+                if saved_file.exists():
+                    saved_contents = saved_file.read_bytes()
             shell = Shell(app, interpreter)
             try:
                 scenario(shell)
@@ -208,6 +242,12 @@ def main():
             finally:
                 shell.cleanup()
                 transcripts.append(shell.transcript)
+                # Restore exactly the settings present before this test owned Vinc.
+                if saved_file is not None and "VINC ready" in shell.transcript:
+                    if saved_contents is None:
+                        saved_file.unlink(missing_ok=True)
+                    else:
+                        saved_file.write_bytes(saved_contents)
     finally:
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text("\n".join(transcripts), encoding="utf-8")
