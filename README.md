@@ -10,6 +10,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | 第一個運行模組 | `first-module/CMakeLists.txt` | 一個 Plugin 的註冊、啟動與正常停止 |
 | 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
 | 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
+| 不用重啟，修改模組參數 | 同一個根目錄入口，新增 `parameters/` | 用 `sender.step` 調整步進 |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
@@ -200,7 +201,7 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja：
 
 ## Python 入門範例（2026-10-26）
 
-`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber 三個 Python Module，
+`python/` 是獨立建置入口，部署 helloModule、counterPublisher、counterSubscriber、parameterPublisher 四個 Python Module，
 共用根目錄的 CounterSample.msg。ModuleType 與實例名稱對應 C++ 教學，讓 Shell 操作保持相同。
 不加入同名的 C++ Plugin，以免掃描時衝突。
 
@@ -234,4 +235,42 @@ ctest --test-dir build/python --output-on-failure
   成功路徑使用既有隔離 CPython 副本（open-vinc/build/runtime-investigation/python），搭配 VS 提供的
   14.51.36247 Runtime；也以該副本建立的 .venv 跑通相同流程。未修改系統 Python 或固定框架。
   若遇 incompatible MSVC Runtime，依錯誤的實際 DLL 路徑修正部署；只更新系統 DLL 不一定能修正 Python 自帶舊副本。
-- Python CI 尚未配置相容環境，Linux／macOS 未驗證。現有 C++ CI 工作流程維持原範圍。
+- Python SDK 的 CI 尚未配置相容環境，Linux／macOS 未驗證。
+
+## 運行中修改參數（2026-10-26）
+
+新增獨立種類 `parameterPublisher`，實例仍叫 `sender`，搭配原有 `counterSubscriber`／`receiver`。
+原本的 counterPublisher 不加入參數 API，維持前幾篇的入門程式。C++ 原始碼在 parameters/publisher.cpp，
+由根目錄 add_subdirectory(parameters) 建置；Python 在 python/modules/parameterPublisher/。
+兩種入口沿用現有建置目錄與 CounterSample 訊息，不變更固定框架。
+
+先啟動 counterSubscriber，再啟動 parameterPublisher；等待 Started sender 與 step=1，逐筆操作：
+
+```text
+param get sender.step
+sender send
+param set sender.step 5
+param get sender.step
+sender send
+sender send
+exit
+```
+
+每次 send 等到實際接收輸出再繼續。set 之後先等 step=5，表示 Module 已更新本地設定。
+預期 sequence 為 1、6、11。參數為 UInt64，預設 FrameworkOnly；on_change 轉交具名函式，
+用 update 讀取快取。最後送出的 sequence 初始 0，成功 push 後才記錄新值；加法超出 UInt64 範圍時
+回傳 1，不發送也不推進序號。step=0 允許重複目前序號；本篇只示範 1 與 5，不擴充參數驗證機制。
+參數中央提交與 Module 套用並非同一事件，不以 param get 代替 Module 的 step 確認輸出。
+
+本機實測：Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、相容 CPython 3.13.12：
+
+- C++ Debug／Release 建置與既有 CTest 各 2/2 通過；另以真實中央 Shell 各執行一次參數流程：
+  `.venv/Scripts/python.exe python/tests/smoke.py build/debug/Vinc.exe - build/debug/parameters-test.log parameters`，
+  Release 改用 build/release。Python 在此僅為標準函式庫測試驅動器，C++ 建置與模組不需 Python SDK。
+- Python Debug／Release 建置與 python.tutorials 各 1/1 通過，現涵蓋 hello、counter、parameters 三個情境。
+- 兩種語言、兩種組態皆驗證序號 1／6／11、錯誤型別不改變 live value、UInt64 溢位拒絕發送、
+  改回步進 1 後繼續發送，以及參數更新前後 sender PID 相同。所有等待有期限，最後正常 exit 並回收本次程序。
+- 各建置目錄保留 parameters-test.log 或 python-test.log。不同組態的 Python 測試須依序執行，
+  避免相同 VINC_NAME 的中央同時啟動；不修改框架的單實例防護。
+- C++ Windows CI 增加參數 Shell 流程，測試驅動器使用 setup-python 3.13；遠端尚未執行。
+  Python SDK 的遠端 CI、Linux／macOS 與參數保存／重啟流程仍待驗證。本篇不呼叫 param save。

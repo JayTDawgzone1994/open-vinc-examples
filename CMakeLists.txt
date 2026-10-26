@@ -29,4 +29,5 @@ set_target_properties(shell PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}"
 )
 
+add_subdirectory(parameters)
 include(tests/CMakeLists.txt)

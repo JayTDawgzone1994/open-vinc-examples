@@ -17,6 +17,10 @@ jobs:
           submodules: true
       - name: Initialize C++ dependencies
         run: git -C framework/open-vinc submodule update --init -- library/tcl/upstream library/fmt/upstream library/spdlog/upstream library/tomlplusplus/upstream
+      - uses: actions/setup-python@v5
+        if: matrix.example == '.'
+        with:
+          python-version: '3.13'
       - name: Configure, build and test in the MSVC environment
         shell: cmd
         run: |
@@ -29,3 +33,6 @@ jobs:
           cmake --build build --parallel 4
           if errorlevel 1 exit /b 1
           ctest --test-dir build --output-on-failure
+      - name: Exercise live parameters through the real native Shell
+        if: matrix.example == '.'
+        run: python python/tests/smoke.py build/Vinc.exe - build/parameters-test.log parameters

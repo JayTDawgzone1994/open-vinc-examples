@@ -14,8 +14,11 @@ COMMAND_TIMEOUT = 10
 
 class Shell:
     def __init__(self, app, interpreter):
+        arguments = [str(app), "--shell-port", "0"]
+        if interpreter is not None:
+            arguments += ["--python", str(interpreter)]
         self.process = subprocess.Popen(
-            [str(app), "--shell-port", "0", "--python", str(interpreter)],
+            arguments,
             cwd=app.parent,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -119,13 +122,52 @@ def counter(shell):
     assert "stopped receiver" in shell.transcript, shell.transcript
 
 
+def parameters(shell):
+    shell.wait_for("VINC ready")
+    shell.command("counterSubscriber", "Started receiver")
+    shell.command("parameterPublisher", "Started sender")
+    if "step=1" not in shell.transcript:
+        shell.wait_for("step=1")
+    shell.command("help", "sender Running")
+    initial_sender = re.search(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
+    assert initial_sender, shell.transcript
+
+    shell.command("param get sender.step", "= 1")
+    shell.command("sender send", "received sequence=1 publisher=sender")
+    shell.command("param set sender.step 5", "step=5")
+    shell.command("param get sender.step", "= 5")
+    shell.command("sender send", "received sequence=6 publisher=sender")
+    shell.command("sender send", "received sequence=11 publisher=sender")
+    shell.command("receiver status", "received=3")
+
+    # Invalid parameter values do not change the live value or stop the Module.
+    shell.command("param set sender.step nope", "Invalid Value")
+    shell.command("param get sender.step", "= 5")
+    shell.command("sender send", "received sequence=16 publisher=sender")
+    shell.command("param set sender.step 18446744073709551615", "step=18446744073709551615")
+    shell.command("sender send", "sender returned 1")
+    assert "sequence limit reached" in shell.transcript, shell.transcript
+    shell.command("receiver status", "received=4")
+    shell.command("param set sender.step 1", "step=1")
+    shell.command("sender send", "received sequence=17 publisher=sender")
+    shell.command("receiver status", "received=5")
+
+    shell.command("help", "sender Running")
+    sender_pids = re.findall(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
+    assert len(sender_pids) == 2 and sender_pids[0] == sender_pids[1], shell.transcript
+    shell.finish()
+    assert "stopped sender" in shell.transcript, shell.transcript
+    assert "stopped receiver" in shell.transcript, shell.transcript
+
+
 def main():
     app = Path(sys.argv[1]).resolve()
-    interpreter = Path(sys.argv[2]).resolve()
+    interpreter = None if sys.argv[2] == "-" else Path(sys.argv[2]).resolve()
     log = Path(sys.argv[3])
     transcripts = []
     try:
-        for scenario in (hello, counter):
+        scenarios = (parameters,) if sys.argv[4:] == ["parameters"] else (hello, counter, parameters)
+        for scenario in scenarios:
             shell = Shell(app, interpreter)
             try:
                 scenario(shell)
