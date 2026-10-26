@@ -12,6 +12,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
 | 設定與儲存模組參數 | 同一個根目錄入口，新增 `parameters/` | 調整 `sender.step`、保存並重新啟動 |
 | 第一個 RPC | 同一個根目錄入口，新增 `rpc/` | `sender count` 請求 receiver 的接收數量 |
+| 使用啟動腳本 | 同一個 RPC 範例 | `-S` 與 `srun` 共用 scripts/rpc-startup.tcl |
 
 兩個入口獨立配置，使用不同建置目錄，共用 `framework/open-vinc`。原有根目錄命令仍建置計數範例。
 
@@ -322,3 +323,30 @@ Windows x64、MSVC 19.51.36257、CMake 4.3.2、Ninja、相容 CPython 3.13.12 �
   本輪只修改測試與文件，沿用已建置的相同執行檔；沒有重新編譯 Module 或 SDK。
 - 各建置目錄的 native-tutorials.log／python-test.log 含 Parameters saved、RESTART AFTER PARAM SAVE、sequence 5／10。
   本機確認測試後原參數檔的 saved value 維持 1。遠端 CI、Linux／macOS 未驗證。
+
+## 啟動腳本（2026-10-26）
+
+新增 scripts/rpc-startup.tcl，依序執行 rpcSubscriber、rpcPublisher。兩種語言共用同一份 Tcl，
+不修改任何 Module 或框架原始碼。每個啟動命令等 Ready；腳本完成後模組持續運行，最後由 Shell exit 正常關閉。
+範例已部署 Tcl Runtime，修改這份腳本不需重新編譯。
+
+從 repository 根目錄的 PowerShell 啟動：
+
+```powershell
+.\build\debug\Vinc.exe -S scripts/rpc-startup.tcl
+.\build\python\Vinc.exe --python .\.venv\Scripts\python.exe -S scripts/rpc-startup.tcl
+```
+
+兩行為不同語言的替代操作；每次先結束前一個中央。所有中央 CLI 選項放在 -S 前面，後方是 Tcl 的 argv。
+路徑相對工作目錄。也可先開沒有 -S 的中央，再於 Shell 輸入 srun scripts/rpc-startup.tcl。
+等 Script completed: scripts/rpc-startup.tcl 後才輸入一般 Shell 命令，避免前景腳本期間輸入被忽略。
+
+- startup 測試從 repository 根目錄使用相對路徑，真正透過 CLI -S 執行同一份檔案。
+  完成後驗證 RPC received=0、發送 sequence=1、RPC received=1，以及不同 Module PID。
+- 在已啟動的模組上重複 srun，驗證同名實例導致 Script error in ... (line 2)，原有 Module 仍可回覆數量 1。
+  正常 exit 後再啟動新中央，以互動 srun 執行腳本，核對新數量 0、收訊後 1 與正常停止。
+- Windows x64／MSVC 19.51／相容 CPython 3.13.12：C++ Debug／Release 的 parameters、rpc、startup 情境各通過；
+  Python Debug／Release 的 python.tutorials 各 1/1 通過，包含 hello、counter、parameters、rpc、startup 五情境。
+  本輪沿用既有二進位，不重建未修改的 Module／SDK。等待有期限，失敗只清理本次程序樹。
+- native-tutorials.log／python-test.log 記錄 -S、重複執行錯誤與 INTERACTIVE SRUN。
+  C++ CI 已納入 startup 情境；遠端 CI、Linux／macOS、內嵌腳本、取消及 Tcl 控制流程未在本輪驗證。

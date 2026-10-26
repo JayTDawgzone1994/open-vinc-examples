@@ -10,18 +10,22 @@ import threading
 import time
 
 COMMAND_TIMEOUT = 10
+EXAMPLE_ROOT = Path(__file__).resolve().parents[2]
+STARTUP_SCRIPT = "scripts/rpc-startup.tcl"
 
 
 class Shell:
-    def __init__(self, app, interpreter):
+    def __init__(self, app, interpreter, startup=None, working_directory=None):
         self.app = app
         self.interpreter = interpreter
         arguments = [str(app), "--shell-port", "0"]
         if interpreter is not None:
             arguments += ["--python", str(interpreter)]
+        if startup is not None:
+            arguments += ["-S", startup]
         self.process = subprocess.Popen(
             arguments,
-            cwd=app.parent,
+            cwd=working_directory or app.parent,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -215,13 +219,51 @@ def rpc(shell):
     assert "stopped receiver" in shell.transcript, shell.transcript
 
 
+def startup_scripts(shell):
+    # -S must finish before ordinary terminal input is accepted again.
+    shell.wait_for("Script completed: " + STARTUP_SCRIPT)
+    shell.command("sender count", "RPC received=0")
+    shell.command("sender send", "received sequence=1 publisher=sender")
+    shell.command("sender count", "RPC received=1")
+    shell.command("srun " + STARTUP_SCRIPT, "Script error in " + STARTUP_SCRIPT)
+    # The duplicate receiver name stops the script and leaves existing Modules alive.
+    shell.command("sender count", "RPC received=1")
+    shell.command("help", "sender Running")
+    receiver_pid = re.search(r"receiver Running MID=\d+ PID=(\d+)", shell.transcript)
+    sender_pid = re.search(r"sender Running MID=\d+ PID=(\d+)", shell.transcript)
+    assert receiver_pid and sender_pid and receiver_pid[1] != sender_pid[1], shell.transcript
+    shell.finish()
+    assert "ready receiver" in shell.transcript, shell.transcript
+    assert "ready sender" in shell.transcript, shell.transcript
+    assert "stopped receiver" in shell.transcript, shell.transcript
+    assert "stopped sender" in shell.transcript, shell.transcript
+
+    # A new central application can launch the same file interactively with srun.
+    interactive = Shell(shell.app, shell.interpreter, working_directory=EXAMPLE_ROOT)
+    try:
+        interactive.wait_for("VINC ready")
+        interactive.command("srun " + STARTUP_SCRIPT, "Script completed: " + STARTUP_SCRIPT)
+        interactive.command("sender count", "RPC received=0")
+        interactive.command("sender send", "received sequence=1 publisher=sender")
+        interactive.command("sender count", "RPC received=1")
+        interactive.finish()
+        assert "stopped receiver" in interactive.transcript, interactive.transcript
+        assert "stopped sender" in interactive.transcript, interactive.transcript
+    finally:
+        interactive.cleanup()
+        shell.transcript += "\nINTERACTIVE SRUN\n" + interactive.transcript
+
+
 def main():
     app = Path(sys.argv[1]).resolve()
     interpreter = None if sys.argv[2] == "-" else Path(sys.argv[2]).resolve()
     log = Path(sys.argv[3])
     transcripts = []
     try:
-        scenarios = {"hello": hello, "counter": counter, "parameters": parameters, "rpc": rpc}
+        scenarios = {
+            "hello": hello, "counter": counter, "parameters": parameters,
+            "rpc": rpc, "startup": startup_scripts,
+        }
         selected = sys.argv[4:] or list(scenarios)
         for name in selected:
             scenario = scenarios[name]
@@ -235,7 +277,11 @@ def main():
                 saved_file = app.parent / "vinc_data" / identity[1] / "params.toml"
                 if saved_file.exists():
                     saved_contents = saved_file.read_bytes()
-            shell = Shell(app, interpreter)
+            shell = Shell(
+                app, interpreter,
+                startup=STARTUP_SCRIPT if name == "startup" else None,
+                working_directory=EXAMPLE_ROOT if name == "startup" else None,
+            )
             try:
                 scenario(shell)
                 print(f"PASS {scenario.__name__}")
