@@ -15,9 +15,12 @@ class RpcSubscriber final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     RpcSubscriber() : BaseModule("receiver") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto subscriber = context.subscribe<vinc::CounterSample>(
             "tutorial/counter", [this](std::unique_ptr<vinc::CounterSample> message) {
                 on_message(std::move(message));
@@ -41,6 +44,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
         }
@@ -62,6 +67,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         subscriber_.reset();
         std::cout << "stopped receiver" << std::endl;
         return {};
@@ -69,11 +75,14 @@ public:
 
 private:
     vinc::rpc::RpcStatus get_count(const vinc::GetCountRequest&, vinc::GetCountResponse& response) {
+        // RPC handler: called when another module requests this receiver's count.
+        // Fill response and return success; the framework sends the reply.
         response.data().received = received_;
         return vinc::rpc::RpcStatus::success();
     }
 
     void on_message(std::unique_ptr<vinc::CounterSample> message) {
+        // Subscription callback: called when a counter message is delivered.
         ++received_;
         std::cout << "received sequence=" << message->data().sequence.get()
                   << " publisher=" << message->publisher_name() << std::endl;
@@ -83,4 +92,5 @@ private:
     std::uint64_t received_ = 0;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(RpcSubscriber, "rpcSubscriber")

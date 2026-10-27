@@ -14,9 +14,12 @@ class RpcPublisher final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     RpcPublisher() : BaseModule("sender") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto publisher = context.advertise<vinc::CounterSample>("tutorial/counter");
         if (!publisher) {
             return std::unexpected(publisher.error());
@@ -28,6 +31,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
         }
@@ -45,6 +50,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         publisher_.reset();
         std::cout << "stopped sender" << std::endl;
         return {};
@@ -52,6 +58,7 @@ public:
 
 private:
     std::int32_t request_count() {
+        // Submit an asynchronous RPC; on_count_reply handles the result later.
         auto request = vinc::make_message<vinc::GetCountRequest>();
         auto submitted = context.call_rpc<vinc::GetCountRequest, vinc::GetCountResponse>(
             "receiver", "get_count", *request, {},
@@ -67,6 +74,8 @@ private:
     }
 
     void on_count_reply(vinc::Result<vinc::rpc::RpcReply<vinc::GetCountResponse>> reply) {
+        // RPC completion callback: called later when the request finishes.
+        // Check framework errors and the service status before using the response.
         if (!reply) {
             std::cerr << "RPC failed: " << vinc::error_to_string(reply.error()) << std::endl;
             return;
@@ -81,6 +90,7 @@ private:
     }
 
     std::int32_t send_message() {
+        // Publish one counter sample; advance the sequence after a successful push.
         auto message = vinc::make_message<vinc::CounterSample>();
         message->data().sequence = next_sequence_;
         auto published = publisher_->push(*message);
@@ -97,4 +107,5 @@ private:
     std::uint64_t next_sequence_ = 1;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(RpcPublisher, "rpcPublisher")

@@ -13,9 +13,12 @@ class CounterSubscriber final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     CounterSubscriber() : BaseModule("receiver") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto subscriber = context.subscribe<vinc::CounterSample>(
             "tutorial/counter",
             [this](std::unique_ptr<vinc::CounterSample> message) {
@@ -31,6 +34,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
         }
@@ -55,6 +60,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         subscriber_.reset();
         std::cout << "stopped receiver" << std::endl;
         return {};
@@ -62,6 +68,7 @@ public:
 
 private:
     void on_message(std::unique_ptr<vinc::CounterSample> message) {
+        // Subscription callback: called when a counter message is delivered.
         ++received_;
 
         // Flush this small interactive example so captured output is visible promptly.
@@ -75,4 +82,5 @@ private:
     std::uint64_t received_ = 0;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(CounterSubscriber, "counterSubscriber")

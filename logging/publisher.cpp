@@ -15,9 +15,12 @@ class LogPublisher final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     LogPublisher() : BaseModule("sender") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto publisher = context.advertise<vinc::CounterSample>("tutorial/counter");
         if (!publisher) {
             return std::unexpected(publisher.error());
@@ -30,6 +33,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
         }
@@ -55,6 +60,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         publisher_.reset();
         write_log(vinc::log::Level::Info, "sender stopped");
         std::cout << "stopped sender" << std::endl;
@@ -63,6 +69,7 @@ public:
 
 private:
     void write_log(vinc::log::Level level, std::string_view text) {
+        // Write one log entry; report rejected logs without stopping the module.
         auto logged = context.log.write(level, text);
         if (!logged) {
             std::cerr << "Log rejected: " << vinc::error_to_string(logged.error()) << std::endl;
@@ -70,6 +77,7 @@ private:
     }
 
     std::int32_t request_count(const std::string& target) {
+        // Submit an asynchronous RPC; on_count_reply handles the result later.
         auto request = vinc::make_message<vinc::GetCountRequest>();
         auto submitted = context.call_rpc<vinc::GetCountRequest, vinc::GetCountResponse>(
             target, "get_count", *request, {},
@@ -87,6 +95,8 @@ private:
     }
 
     void on_count_reply(vinc::Result<vinc::rpc::RpcReply<vinc::GetCountResponse>> reply) {
+        // RPC completion callback: called later when the request finishes.
+        // Check framework errors and the service status before using the response.
         if (!reply) {
             write_log(vinc::log::Level::Error,
                       "RPC request failed: " + vinc::error_to_string(reply.error()));
@@ -106,6 +116,7 @@ private:
     }
 
     std::int32_t send_message() {
+        // Publish one counter sample; advance the sequence after a successful push.
         write_log(vinc::log::Level::Debug, "sending sequence=" + std::to_string(next_sequence_));
         auto message = vinc::make_message<vinc::CounterSample>();
         message->data().sequence = next_sequence_;
@@ -123,4 +134,5 @@ private:
     std::uint64_t next_sequence_ = 1;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(LogPublisher, "logPublisher")

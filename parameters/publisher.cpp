@@ -13,9 +13,12 @@ class ParameterPublisher final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     ParameterPublisher() : BaseModule("sender") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto registered = context.param.register_param<std::uint64_t>("step", 1);
         if (!registered) {
             return std::unexpected(registered.error());
@@ -39,6 +42,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
         }
@@ -68,6 +73,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         publisher_.reset();
         std::cout << "stopped sender" << std::endl;
         return {};
@@ -75,6 +81,7 @@ public:
 
 private:
     void on_parameters_changed() {
+        // Parameter callback: read the latest step from the framework's local cache.
         auto updated = context.param.update("step", step_);
         if (!updated) {
             std::cerr << vinc::error_to_string(updated.error()) << std::endl;
@@ -89,4 +96,5 @@ private:
     std::uint64_t step_ = 1;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(ParameterPublisher, "parameterPublisher")

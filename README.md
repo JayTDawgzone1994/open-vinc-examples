@@ -382,3 +382,19 @@ Windows x64／MSVC 19.51.36257／CMake 4.3.2／Ninja／相容 CPython 3.13.12 �
   且新的中央日誌檔包含關閉顯示後的 sequence=3、四個等級與 sender stopped。
   只讀取本次中央新增的日誌檔，不改寫或刪除既有日誌；所有程序等待有期限並清理本次程序樹。
 - C++ CI 已加入 logging 情境；遠端 CI、Python SDK 遠端 CI、Linux／macOS、過載或磁碟故障未在本輪驗證。
+
+## 入門函式註解（2026-10-27）
+
+- C++／Python 的 Hello、Counter、Parameter、RPC、Log 共 16 份模組來源，補齊命名、啟動、指令與正常停止的註解。
+  各 hook 開頭說明框架何時呼叫、應放入哪些工作，以及 {}／None 或 0／1 的回傳意義。
+  訂閱、參數與 RPC 的函式另標示為 callback／handler，指出資料何時送達或如何填回覆；普通輔助函式也簡述責任。
+- C++ 建構子說明固定實例名稱，REGISTER_MODULE 說明建立模組時使用的種類名稱。
+  Python 明確說明 on_name 只負責命名，發布／訂閱放在 on_start；指令 args 不含實例名稱。
+- 註解放在函式內第一行，讓網站擷取單一函式時一併帶入說明；維持具名處理函式，lambda 仍只轉交。
+  後續新增教學函式，優先解釋呼叫時機、用途與回傳意義，避免逐行重述語法。
+- 逐行對照原 commit：16 份來源只增加獨立註解行，所有非註解行原樣保留；8 份 Python 的 AST 完全一致。
+  固定框架、訊息格式、API 與執行行為均未修改。網站的中英文對照由網站 repository 維護。
+- Windows x64：C++ Debug／Release 增量建置成功，counter.lifecycle／counter.shell 各 2/2 通過；
+  原生 Shell 的 parameters、rpc、startup、logging 四情境各通過。Hello 獨立入口 Debug／Release 建置及 hello.shell 各 1/1 通過。
+- Python Debug／Release 建置與部署完成，python.tutorials 各 1/1 通過，包含六個教學情境。
+  中文註解由網站顯示層套用，範例保留英文註解；未驗證 Linux／macOS、遠端 CI 或新增任何 Runtime 行為。

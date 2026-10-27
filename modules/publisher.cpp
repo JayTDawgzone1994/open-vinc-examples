@@ -12,9 +12,12 @@ class CounterPublisher final
     : public vinc::BaseModule<vinc::RunMode::FrameworkLoop> {
 public:
     CounterPublisher() : BaseModule("sender") {
+        // Set the instance name used by Shell commands.
     }
 
     vinc::Result<void> on_start(const std::vector<std::string>&) override {
+        // Startup hook: the framework calls this after the instance name is approved.
+        // Set up this module here; returning {} means initialization succeeded.
         auto publisher = context.advertise<vinc::CounterSample>(
             "tutorial/counter");
         if (!publisher) {
@@ -27,6 +30,8 @@ public:
     }
 
     vinc::Result<std::int32_t> module_interface(std::vector<std::string> args) override {
+        // Command hook: called when Shell addresses this instance.
+        // Return 0 for success or 1 to report a command error.
         // Native Shell includes the target. Direct Manager callers may omit it.
         if (!args.empty() && args.front() == get_module_name()) {
             args.erase(args.begin());
@@ -51,6 +56,7 @@ public:
     }
 
     vinc::Result<void> on_stop() override {
+        // Shutdown hook: called during normal shutdown to clean up this module.
         publisher_.reset();
         std::cout << "stopped sender" << std::endl;
         return {};
@@ -61,4 +67,5 @@ private:
     std::uint64_t next_sequence_ = 1;
 };
 
+// Register the type name Shell uses to create this module.
 REGISTER_MODULE(CounterPublisher, "counterPublisher")
