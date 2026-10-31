@@ -9,6 +9,7 @@ commit `466cfa60ae12798192df0ceae8ec175c48b70a76`。本專案使用公開 SDK �
 | --- | --- | --- |
 | 第一個運行模組 | `first-module/CMakeLists.txt` | 一個 Plugin 的註冊、啟動與正常停止 |
 | 第一個跨程序訊息 | 根目錄 `CMakeLists.txt` | 兩個 Module 的計數訊息收發 |
+| 自訂訊息 | 同一個根目錄入口，新增 `custom-message/` | 定義 SensorReading 的數值與字串欄位，生成型別並收發 |
 | 讓模組接收自己的指令 | 同一個根目錄入口 | `receiver status`／`receiver reset` 與錯誤指令 |
 | 設定與儲存模組參數 | 同一個根目錄入口，新增 `parameters/` | 調整 `sender.step`、保存並重新啟動 |
 | 第一個 RPC | 同一個根目錄入口，新增 `rpc/` | `sender count` 請求 receiver 的接收數量 |
@@ -398,3 +399,26 @@ Windows x64／MSVC 19.51.36257／CMake 4.3.2／Ninja／相容 CPython 3.13.12 �
   原生 Shell 的 parameters、rpc、startup、logging 四情境各通過。Hello 獨立入口 Debug／Release 建置及 hello.shell 各 1/1 通過。
 - Python Debug／Release 建置與部署完成，python.tutorials 各 1/1 通過，包含六個教學情境。
   中文註解由網站顯示層套用，範例保留英文註解；未驗證 Linux／macOS、遠端 CI 或新增任何 Runtime 行為。
+
+## 自訂訊息（2026-10-31）
+
+- `messages/SensorReading.msg` 定義 `double temperature` 與 `string sensor`，供兩種語言共用。
+  C++ 使用 `<vinc_messages/SensorReading.hpp>`／`vinc::SensorReading`，Python 使用 `vinc.messages.SensorReading`。
+  `.msg` 不宣告欄位預設值；`T name = value` 是類別常數。生成結果不手動編輯。
+- C++ 模組位於 `custom-message/`，根目錄 CMake 加入此子目錄。Python 新增 sensorPublisher／sensorSubscriber，
+  沿用同一個 Python 入口、訊息目錄與部署規則。原計數、參數、RPC、日誌範例行為不變，框架仍固定 v0.1.2。
+- 發送端以 `make_message` 建立本機訊息；數值直接賦值，字串透過 `assign("room")`，確認成功才 push。
+  C++ 檢查 Result，Python 捕捉 VincError；錯誤指令回傳 1，不停止模組。
+  接收端在具名 `on_message` 中讀取數值與文字（C++ `.get()`／`.str()`，Python 數值屬性／`.decode()`）。
+  Publisher／Subscriber 都存成成員並於 on_stop 釋放，沒有使用者背景執行緒。
+- 從專案根目錄重新建置 C++ 或 Python 入口。新增／修改訊息後 Python 也必須重建 SDK。
+  先關閉上一個中央，再啟動對應 Vinc Shell；先執行 `sensorSubscriber` 等待 Started receiver，
+  再執行 `sensorPublisher` 等待 Started sender。輸入 `sender send`，預期收到
+  `received sensor=room temperature=23.5 publisher=sender`；再次 send 仍是相同讀值，最後 exit 正常停止。
+- Windows x64／MSVC 19.51／CMake 4.3.2／Ninja：C++ Debug、Release 建置及既有 CTest 各 2/2 通過；
+  `python/tests/smoke.py` 以原生 Shell 驅動 custom_message 情境，兩組態均通過。
+  Python Debug、Release SDK 建置及 python.tutorials 各 1/1 通過，包含新增情境在內共七個情境。
+  使用既有 CPython 3.13.12 環境；本輪未更動 Python 或 CRT 安裝。
+- custom_message 情境檢查錯誤指令、兩次完整數值／字串接收、正常停止與中央退出。
+  沿用每個等待最多 10 秒與 finally 清理程序的驅動器。C++ CI 增加此情境；遠端 CI、Linux／macOS 未於本輪驗證。
+  本次範例先做本機 commit 供網站讀取不可變片段，尚未 push。

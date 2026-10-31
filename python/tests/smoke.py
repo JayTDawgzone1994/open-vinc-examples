@@ -128,6 +128,18 @@ def counter(shell):
     assert "stopped receiver" in shell.transcript, shell.transcript
 
 
+def custom_message(shell):
+    shell.wait_for("VINC ready")
+    shell.command("sensorSubscriber", "Started receiver")
+    shell.command("sensorPublisher", "Started sender")
+    shell.command("sender invalid", "sender returned 1")
+    for _ in range(2):
+        shell.command("sender send", "received sensor=room temperature=23.5 publisher=sender")
+    shell.finish()
+    assert "stopped sender" in shell.transcript, shell.transcript
+    assert "stopped receiver" in shell.transcript, shell.transcript
+
+
 def parameters(shell):
     shell.wait_for("VINC ready")
     shell.command("counterSubscriber", "Started receiver")
@@ -362,6 +374,7 @@ def main():
             "hello": hello, "counter": counter, "parameters": parameters,
             "rpc": rpc, "startup": startup_scripts,
             "logging": logging,
+            "custom_message": custom_message,
         }
         selected = sys.argv[4:] or list(scenarios)
         for name in selected:

@@ -35,4 +35,4 @@ jobs:
           ctest --test-dir build --output-on-failure
       - name: Exercise runtime tutorials through the real native Shell
         if: matrix.example == '.'
-        run: python python/tests/smoke.py build/Vinc.exe - build/native-tutorials.log parameters rpc startup logging
+        run: python python/tests/smoke.py build/Vinc.exe - build/native-tutorials.log parameters rpc startup logging custom_message
